@@ -404,7 +404,13 @@ C++ 래퍼를 하나 더 만들어야 하고, 그렇지 않으면 화면으로 �
 `.verse` 파일을 새로 만들면 실행 중인 에디터가 자동으로 잡지 않습니다.
 `Verse.Build` 콘솔 명령은 존재하지 않는 명령이라 무시되고(콘솔은 모르는 명령도
 그냥 echo합니다), `Build Verse Code` 단축키(Ctrl+Shift+B)를 SendKeys로 보내도
-반응이 없었습니다. 결국 재시작해야 잡힙니다. 기존 파일 수정은 자동으로 잡힙니다.
+반응이 없었습니다. 결국 재시작해야 잡힙니다.
+
+> **정정:** 처음에 "기존 파일 수정은 자동으로 잡힌다"고 적었는데 확인해 보니
+> 틀렸습니다. 기존 파일의 한 줄을 고치고 로그를 대조했더니 마지막
+> `Global Verse compile` 시각이 파일 수정 시각보다 **앞**이었습니다.
+> 신규 파일이든 기존 파일 수정이든 **에디터 밖에서 편집했다면 재시작이 필요합니다.**
+> (에디터 내장 Verse 에디터로 편집하는 경우는 별도로 확인하지 않았습니다.)
 
 ---
 
@@ -471,6 +477,78 @@ V3552: 'branch' is not currently supported in loops.
 
 ---
 
+## 11. 엔티티 계층 절차적 생성
+
+프리팹은 에디터에서만 저작할 수 있었지만(벽 ④), **런타임에 엔티티를 만들고
+컴포넌트를 붙이는 것은 순수 Verse로 전부 가능합니다.** 컴파일 프로브로 먼저 확인했습니다:
+
+```verse
+Child := entity{}                                    # 생성 OK
+Tc := transform_component{ Entity := Child }         # 컴포넌트 구성 OK
+Child.AddComponents(array{ Tc, Light })              # 부착 OK
+Entity.AddEntities(array{ Child })                   # 계층 편입 OK
+```
+
+아카타입(클래스 필드)에서 막혔던 건 `GetSelfEntityForComponentInitialization`이
+`epic_internal`이라서였고, 런타임에는 `Entity := Child`로 직접 넘기면 됩니다.
+
+[`OrbitSystemComponent.verse`](../Plugins/VerseGame/Content/OrbitSystemComponent.verse) —
+시작할 때 위성 엔티티 N개를 만들어 자식으로 붙이고, 색상환을 나눠 가진 라이트를
+각각 달아 궤도를 돌립니다.
+
+### 벽 ⑪ — `no_rollback` 함수는 실패 컨텍스트에서 못 부른다
+
+`AddComponents` / `AddEntities`는 `no_rollback` 이펙트입니다. 되돌릴 수 없는
+연산이라 트랜잭션 안에서 부를 수 없습니다.
+
+```
+V3512: This invocation calls a function that has the 'no_rollback' effect,
+       which is not allowed by its context.
+```
+
+두 군데서 걸렸습니다:
+
+1. 헬퍼 함수를 `<transacts>`로 선언한 것 → 이펙트 지정을 아예 빼면 된다
+   (`<no_rollback>`이라는 지정자는 **없습니다**. `V3506: Unknown identifier`)
+2. `if (Tc := MakeSatellite(I)?)` → **`if`의 실패 컨텍스트가 롤백을 요구**하므로
+   그 안에서 no_rollback 함수를 부를 수 없다. 옵셔널 반환을 없애서 해결
+
+두 번째가 특히 헷갈렸습니다. 실패 컨텍스트는 문법적으로는 그냥 `if`처럼 보이지만
+트랜잭션 경계를 만듭니다.
+
+### 검증
+
+위성 좌표를 읽어 부모 기준으로 반지름과 각도를 계산했습니다.
+
+```
+부모: (0.0, -700.0)
+
+위성          반지름    각도(전)   각도(후)     변화
+entity_0      250.0      168.8      92.3     -76.5
+entity_1      250.0       96.8      20.3     -76.5
+entity_2      250.0       24.8     308.3     -76.5
+entity_3      250.0      312.8     236.3     -76.5
+entity_4      250.0      240.8     164.3     -76.5
+```
+
+- 반지름 **250.0 정확히 일치** (설정값 `OrbitRadius = 250.0`)
+- 각도 간격 **72.0° 균등** (360 / 5)
+- 2초 동안 5개 모두 **동일하게 -76.5°** 이동
+
+![궤도 시스템](images/09-orbit-system.png)
+
+각속도는 38.3°/초로 나왔습니다. 설정값(`OrbitPeriod = 8.0` → 45°/초)의 85%인데,
+`spin_component`에서 봤던 것과 **같은 원인**입니다 — `Sleep`이 프레임 경계로
+반올림되기 때문입니다. 고정 스텝 방식은 프레임레이트에 종속된다는 게 여기서도
+그대로 재현됐습니다.
+
+### 부모-자식 트랜스폼
+
+위성은 `LocalTransform`만 설정합니다. 부모(`OrbitSystem` 엔티티)를 움직이면
+위성 5개가 통째로 따라옵니다 — 씬 그래프 계층이 실제로 동작한다는 뜻입니다.
+
+---
+
 ## 삽질 요약
 
 | # | 벽 | 알아낸 방법 |
@@ -485,6 +563,7 @@ V3552: 'branch' is not currently supported in loops.
 | ⑧ | uplugin JSON 키에는 `b` 접두사가 없음 (조용히 무시됨) | `PluginDescriptor.cpp`의 `TryGetBoolField` 확인 |
 | ⑨ | 연속 캡처가 바이트 단위로 동일 | 캡처 사이에 에디터를 틱시켜 해결 |
 | ⑩ | `branch`는 루프 안에서 금지 (V3552) | 컴파일 에러로 확인, 루프 밖으로 이동 |
+| ⑪ | `no_rollback` 함수는 `if` 실패 컨텍스트에서 호출 불가 (V3512) | 옵셔널 반환을 없애서 해결 |
 
 ## 다시 한다면
 
@@ -496,3 +575,4 @@ V3552: 'branch' is not currently supported in loops.
 6. 뭐가 되는지 궁금하면 더미 함수로 컴파일 프로브를 돌린다. 문서보다 컴파일러가 정확하다
 7. 시각 확인이 필요한데 메시가 막히면 라이트를 쓴다
 8. 동시성은 "실행되면 안 되는 일"을 영구적으로 눈에 띄게 심어놓고 검증한다
+9. 아카타입이 막혔다고 포기하지 말고 런타임 생성 경로를 확인한다 — 제약이 다르다

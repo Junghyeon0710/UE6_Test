@@ -26,7 +26,8 @@ Plugins/VerseGame/           ★ Verse 코드 루트 (VersePath /ue6.local/Verse
     ├── HelloComponent.verse      기본형 (OnBeginSimulation / OnSimulate)
     ├── SpinComponent.verse       엔티티 회전
     ├── LightPulseComponent.verse 라이트 맥동 + 색상 순환
-    └── ConcurrencyDemoComponent.verse  sync / race / branch 데모
+    ├── ConcurrencyDemoComponent.verse  sync / race / branch 데모
+    └── OrbitSystemComponent.verse      런타임 엔티티 계층 생성 + 궤도
 
 docs/                        ★ 작업 기록
 ```
@@ -42,6 +43,7 @@ docs/                        ★ 작업 기록
 5. 레벨에 엔티티 생성 → `spin_component` 부착 → PIE에서 회전 검증
 6. `sphere_light_component` + `light_pulse_component`로 눈에 보이는 결과 확보
 7. `sync` / `race` / `branch` 동시성 데모와 취소 동작 검증
+8. 런타임에 자식 엔티티를 생성해 궤도 계층 구성 (반지름·각도 수치 검증)
 
 ### 미해결
 
