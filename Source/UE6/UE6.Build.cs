@@ -18,7 +18,10 @@ public class UE6 : ModuleRules
 			"StateTreeModule",
 			"GameplayStateTreeModule",
 			"UMG",
-			"Slate"
+			"Slate",
+			// Scene Graph (EntityFramework) - SceneGraphTestUtils 에서 사용
+			"Entity",
+			"EntityLevel"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { });
@@ -37,7 +40,8 @@ public class UE6 : ModuleRules
 			"UE6/Variant_SideScrolling/AI",
 			"UE6/Variant_SideScrolling/Gameplay",
 			"UE6/Variant_SideScrolling/Interfaces",
-			"UE6/Variant_SideScrolling/UI"
+			"UE6/Variant_SideScrolling/UI",
+			"UE6/SceneGraph"
 		});
 
 		// Uncomment if you are using Slate UI
