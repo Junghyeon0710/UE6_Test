@@ -58,6 +58,26 @@ public:
 	UFUNCTION(BlueprintCallable, Category="SceneGraph|Test")
 	static UObject* AddStaticMeshToEntity(UObject* Entity, UStaticMesh* Mesh);
 
+	/**
+	 *  액터에 대응하는 씬 그래프 엔티티를 얻는다. 없으면 만든다.
+	 *
+	 *  플레이어 폰 같은 평범한 Actor 는 씬 그래프에 존재하지 않는다.
+	 *  UActorEntitySubsystem 이 액터<->엔티티 브릿지를 관리하므로 그걸 태운다.
+	 */
+	UFUNCTION(BlueprintCallable, Category="SceneGraph|Test")
+	static UObject* GetOrCreateEntityForActor(AActor* Actor);
+
+	/**
+	 *  액터에 UActorEntityComponent 를 붙여 씬 그래프에 브릿지한다.
+	 *  UUE6ActorEntitySubsystem 이 인터롭 규칙을 제공해야 실제로 엔티티가 생긴다.
+	 */
+	UFUNCTION(BlueprintCallable, Category="SceneGraph|Test")
+	static UObject* BridgeActorToSceneGraph(AActor* Actor);
+
+	/** 엔티티에 대응하는 액터를 되찾는다. 브릿지된 엔티티가 아니면 nullptr. */
+	UFUNCTION(BlueprintCallable, Category="SceneGraph|Test")
+	static AActor* FindActorForEntity(UObject* Entity);
+
 	/** 엔티티에 붙어 있는 컴포넌트 목록. */
 	UFUNCTION(BlueprintCallable, Category="SceneGraph|Test")
 	static TArray<UObject*> GetEntityComponents(UObject* Entity);

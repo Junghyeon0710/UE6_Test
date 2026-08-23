@@ -21,7 +21,8 @@ public class UE6 : ModuleRules
 			"Slate",
 			// Scene Graph (EntityFramework) - SceneGraphTestUtils 에서 사용
 			"Entity",
-			"EntityLevel"
+			"EntityLevel",
+			"ActorEntity"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { });

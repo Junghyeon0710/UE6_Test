@@ -5,6 +5,8 @@
 #include "Component.h"
 #include "Entity.h"
 #include "LevelEntity.h"
+#include "ActorEntityComponent.h"
+#include "ActorEntitySubsystem.h"
 #include "SceneGraphUtil.h"
 #include "TransformEntityComponent.h"
 
@@ -186,4 +188,53 @@ bool USceneGraphTestUtils::DestroyEntity(UObject* EntityObject)
 
 	LevelEntityActor->DestroyEntity(Entity);
 	return true;
+}
+
+UObject* USceneGraphTestUtils::GetOrCreateEntityForActor(AActor* Actor)
+{
+	if (!Actor)
+	{
+		return nullptr;
+	}
+
+	UActorEntitySubsystem* Subsystem = UActorEntitySubsystem::Get(Actor);
+	if (!Subsystem)
+	{
+		return nullptr;
+	}
+
+	return Subsystem->FindEntityForActor(Actor, /*bAllowCreateEntity*/ true);
+}
+
+AActor* USceneGraphTestUtils::FindActorForEntity(UObject* EntityObject)
+{
+	verse::entity* Entity = AsEntity(EntityObject);
+	if (!Entity)
+	{
+		return nullptr;
+	}
+
+	UActorEntitySubsystem* Subsystem = UActorEntitySubsystem::Get(Entity);
+	if (!Subsystem)
+	{
+		return nullptr;
+	}
+
+	return Subsystem->FindActorForEntity(Entity);
+}
+
+UObject* USceneGraphTestUtils::BridgeActorToSceneGraph(AActor* Actor)
+{
+	if (!Actor)
+	{
+		return nullptr;
+	}
+
+	// OnComponentCreated 안에서 인터롭이 초기화되므로 AddComponentByClass 로 붙인다.
+	if (!Actor->GetComponentByClass<UActorEntityComponent>())
+	{
+		Actor->AddComponentByClass(UActorEntityComponent::StaticClass(), /*bManualAttachment*/ false, FTransform::Identity, /*bDeferredFinish*/ false);
+	}
+
+	return GetOrCreateEntityForActor(Actor);
 }

@@ -643,6 +643,109 @@ Entity = PrefabComponent->CreateEntity(Outer, Name);
 
 ---
 
+## 13. C++ 브릿지 — 플레이어를 씬 그래프로 끌어오기
+
+12장에서 막혔던 걸 C++로 뚫었습니다. **플레이어 폰이 씬 그래프 엔티티를 갖게
+됐고, Verse 컴포넌트가 그 위에서 돕니다.**
+
+### 벽 ⑬ — 인터롭 서브시스템에 구체 클래스가 없다
+
+`UActorEntitySubsystem`은 액터↔엔티티 브릿지를 관리하는 월드 서브시스템인데:
+
+```cpp
+UCLASS(Abstract, MinimalAPI)
+class UActorEntitySubsystem : public UWorldSubsystem
+```
+
+**Abstract 이고, 엔진 전체에 구체 서브클래스가 하나도 없습니다.** 확인해 보니
+파생 클래스가 자기 자신뿐이었습니다. Abstract 서브시스템은 인스턴스화되지 않으므로
+`UActorEntitySubsystem::Get()`이 항상 null이고, **인터롭 레이어 전체가 죽어 있습니다.**
+
+그리고 이름에 속기 쉬운 함수가 하나 더 있습니다:
+
+```cpp
+verse::entity* UActorEntitySubsystem::FindEntityForActor(AActor* Actor, const bool bAllowCreateEntity)
+{
+    const UActorEntityComponent* InteropComponent = Actor ? Actor->GetComponentByClass<UActorEntityComponent>() : nullptr;
+    return InteropComponent ? InteropComponent->GetRootEntity() : nullptr;
+}
+```
+
+`bAllowCreateEntity`를 **아예 쓰지 않습니다.** 이름과 달리 아무것도 만들지 않고
+기존 컴포넌트를 조회만 합니다.
+
+### 필요한 조건 세 가지
+
+`UActorEntityComponent::OnComponentCreated()`가 초기화를 하는데, 게이트가 이렇습니다:
+
+```cpp
+if (!World || !OwnerActor || !InteropSubsystem || !InteropRules
+    || InteropRules->ActorEntityConsidered == EConsideredForActorEntityInterop::No || !HasValidRole)
+{
+    return;   // 조용히 건너뛴다
+}
+```
+
+1. 구체 서브시스템 인스턴스
+2. 해당 액터 클래스에 매칭되는 인터롭 규칙 (`IsChildOf` 매칭)
+3. 액터에 `UActorEntityComponent` (생성 시점에 초기화되므로 `AddComponentByClass` 사용)
+
+### 구현
+
+[`UE6ActorEntitySubsystem.h`](../Source/UE6/SceneGraph/UE6ActorEntitySubsystem.h) —
+빠져 있던 구체 클래스를 만들고 규칙을 제공합니다.
+
+```cpp
+FActorEntityInteropRules& Rule = CachedRules.AddDefaulted_GetRef();
+Rule.ActorClass = ACharacter::StaticClass();       // IsChildOf 라 BP_ThirdPersonCharacter 도 잡힌다
+Rule.ActorEntityConsidered = EConsideredForActorEntityInterop::Yes;
+Rule.AllowedEntityComponents.Add(verse::transform_component::StaticClass());
+```
+
+`SceneGraphTestUtils::BridgeActorToSceneGraph(Actor)`가 컴포넌트를 붙입니다.
+
+### 결과
+
+```
+브릿지 엔티티: ...SimulationEntity.BP_ThirdPersonCharacter0_0
+  컴포넌트: ['replication_component', 'transform_component',
+             'tag_component', 'possessable_component']
+```
+
+`possessable_component`가 **자동으로** 붙었습니다. 인터롭이 켜지면 빙의 관련 배관도
+같이 붙는다는 뜻입니다.
+
+폰을 옮기며 엔티티 트랜스폼을 대조했습니다:
+
+```
+                  폰 위치                      엔티티 트랜스폼
+(    0.0,    0.0, 302.0)  ->  (    0.0,    0.0, 302.0)
+(  400.0,    0.0, 292.4)  ->  (  400.0,    0.0, 292.4)
+(  400.0,  400.0, 292.2)  ->  (  400.0,  400.0, 292.2)
+(    0.0,  400.0, 292.4)  ->  (    0.0,  400.0, 292.4)
+```
+
+Z의 소수점 변화까지 그대로 따라옵니다. 여기에 `sphere_light_component`와
+우리가 만든 `light_pulse_component`를 붙이면 **Verse가 제어하는 라이트가
+플레이어를 따라다닙니다.**
+
+![플레이어 브릿지](images/10-player-bridge.png)
+
+### 남은 한계
+
+- **빙의는 여전히 불가능합니다.** `possessable_component`가 붙긴 했지만
+  `possessor_component`가 `<internal>`이라 `BeginPossess`를 부를 수단이 없습니다.
+- 플레이어 엔티티는 `LevelEntity`가 아니라 **`SimulationEntity` 아래**에 생깁니다.
+  레벨에 배치한 우리 엔티티들과 트리가 달라서, Verse 컴포넌트가 트리 순회로
+  플레이어를 찾는 건 안 됩니다. 대신 **플레이어 엔티티에 컴포넌트를 직접 붙이는**
+  방식으로 우회했습니다.
+- `FindActorForEntity` 역방향 조회는 `None`을 돌려줬습니다. 매핑 등록 경로가
+  따로 있는 듯한데 추적하지 않았습니다.
+- 브릿지는 PIE 세션마다 런타임에 걸어야 합니다. 영구화하려면 폰 블루프린트에
+  `UActorEntityComponent`를 직접 추가해야 합니다.
+
+---
+
 ## 삽질 요약
 
 | # | 벽 | 알아낸 방법 |
@@ -659,6 +762,7 @@ Entity = PrefabComponent->CreateEntity(Outer, Name);
 | ⑩ | `branch`는 루프 안에서 금지 (V3552) | 컴파일 에러로 확인, 루프 밖으로 이동 |
 | ⑪ | `no_rollback` 함수는 `if` 실패 컨텍스트에서 호출 불가 (V3512) | 옵셔널 반환을 없애서 해결 |
 | ⑫ | 이름은 `<public>`인데 클래스가 `<epic_internal>` — 참조만 되고 생성 불가 | 생성까지 프로브해서 확인 |
+| ⑬ | 인터롭 서브시스템이 Abstract 인데 구체 클래스가 엔진에 없음 | 파생 클래스 스캔, 직접 구현 |
 
 ## 다시 한다면
 
@@ -672,3 +776,4 @@ Entity = PrefabComponent->CreateEntity(Outer, Name);
 8. 동시성은 "실행되면 안 되는 일"을 영구적으로 눈에 띄게 심어놓고 검증한다
 9. 아카타입이 막혔다고 포기하지 말고 런타임 생성 경로를 확인한다 — 제약이 다르다
 10. 접근 가능 프로브는 타입 참조가 아니라 **생성까지** 시도해야 의미가 있다
+11. 파라미터 이름을 믿지 말고 구현을 읽는다 (`bAllowCreateEntity`는 쓰이지도 않는다)
