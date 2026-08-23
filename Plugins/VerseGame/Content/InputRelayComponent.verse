@@ -25,9 +25,13 @@ input_reaction_component<public> := class<final_super>(component):
     @editable
     var MaxSpeed<public>:float = 450.0
 
-    # 이 높이보다 위면 점프 중으로 본다
+    # 지면 기준보다 이만큼 위면 공중으로 본다 (cm)
     @editable
-    var GroundHeight<public>:float = 330.0
+    var AirborneHeight<public>:float = 40.0
+
+    # 수직 속도가 이 값보다 작으면 지면에 안착한 것으로 보고 기준 높이를 갱신한다 (cm/s)
+    @editable
+    var SettleSpeed<public>:float = 20.0
 
     @editable
     var UpdateInterval<public>:float = 0.1
@@ -63,6 +67,8 @@ input_reaction_component<public> := class<final_super>(component):
             Root := FindRoot(Entity)
             var Prev:vector3 = vector3{}
             var HasPrev:logic = false
+            var GroundLevel:float = 0.0
+            var HasGround:logic = false
 
             loop:
                 Sleep(UpdateInterval)
@@ -72,6 +78,7 @@ input_reaction_component<public> := class<final_super>(component):
                     Now := GetLocation[Player]
                 then:
                     var Speed:float = 0.0
+                    var VertSpeed:float = 0.0
                     if (HasPrev?):
                         # 수평 이동만 센다
                         Flat := vector3:
@@ -79,24 +86,36 @@ input_reaction_component<public> := class<final_super>(component):
                             Left := Now.Left - Prev.Left
                             Up := 0.0
                         set Speed = Flat.Length() / UpdateInterval
+                        set VertSpeed = (Now.Up - Prev.Up) / UpdateInterval
                     set Prev = Now
                     set HasPrev = true
+
+                    # 수직 이동이 거의 없으면 지면에 안착한 것으로 보고 기준을 갱신한다.
+                    # 절대 Z 대신 이 기준을 쓰면 경사/높낮이가 달라져도 판정이 유지된다.
+                    if (VertSpeed.IsAlmostZero[SettleSpeed]):
+                        set GroundLevel = Now.Up
+                        set HasGround = true
+
+                    Airborne := if (HasGround?, Now.Up - GroundLevel > AirborneHeight) then true else false
 
                     Ratio := if (Speed > MaxSpeed) then 1.0 else Speed / MaxSpeed
                     set Light.Intensity = IdleIntensity + (RunIntensity - IdleIntensity) * Ratio
 
-                    if (Now.Up > GroundHeight):
-                        # 점프 중이면 흰색
+                    if (Airborne?):
+                        # 공중이면 흰색
                         set Light.ColorFilter = NamedColors.White
                     else:
                         # 정지 청록 -> 전력질주 노랑
                         set Light.ColorFilter = MakeColorFromHSV(180.0 - 120.0 * Ratio, 0.9, 1.0)
 
-                    # 검증용: 계산된 비율을 스케일에 기록한다.
+                    # 검증용: 스케일에 두 값을 실어 보낸다.
+                    # Forward = 1 + 속도비율, Up = 공중이면 2.0
                     # 메시가 없어 화면에는 안 보이지만 GetEntityTransform 으로 읽을 수 있다.
                     if (Tc := Entity.GetComponent[transform_component]):
-                        S := 1.0 + Ratio
                         set Tc.LocalTransform = transform:
                             Translation := Tc.LocalTransform.Translation
                             Rotation := Tc.LocalTransform.Rotation
-                            Scale := vector3{ Forward := S, Left := S, Up := S }
+                            Scale := vector3:
+                                Forward := 1.0 + Ratio
+                                Left := 1.0
+                                Up := if (Airborne?) then 2.0 else 1.0
