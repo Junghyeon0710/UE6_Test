@@ -25,7 +25,8 @@ Plugins/VerseGame/           ★ Verse 코드 루트 (VersePath /ue6.local/Verse
 └── Content/
     ├── HelloComponent.verse      기본형 (OnBeginSimulation / OnSimulate)
     ├── SpinComponent.verse       엔티티 회전
-    └── LightPulseComponent.verse 라이트 맥동 + 색상 순환
+    ├── LightPulseComponent.verse 라이트 맥동 + 색상 순환
+    └── ConcurrencyDemoComponent.verse  sync / race / branch 데모
 
 docs/                        ★ 작업 기록
 ```
@@ -40,6 +41,7 @@ docs/                        ★ 작업 기록
 4. 씬 그래프를 코드로 다루기 위한 C++ 유틸리티 추가
 5. 레벨에 엔티티 생성 → `spin_component` 부착 → PIE에서 회전 검증
 6. `sphere_light_component` + `light_pulse_component`로 눈에 보이는 결과 확보
+7. `sync` / `race` / `branch` 동시성 데모와 취소 동작 검증
 
 ### 미해결
 
