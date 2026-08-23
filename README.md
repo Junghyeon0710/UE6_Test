@@ -1,6 +1,9 @@
 # UE6
 
-UE 6.0 서드퍼슨 템플릿 기반 학습용 프로젝트. Verse와 Scene Graph를 실제로 붙여보는 중.
+UE 6.0 서드퍼슨 템플릿 기반 학습용 프로젝트. Verse와 Scene Graph를 실제로 붙여본 기록.
+
+작업 과정에서 마주친 벽 17개와 각각의 원인·해결은
+**[Verse / Scene Graph 실습 기록](docs/verse-scenegraph-log.md)** 에 정리돼 있습니다.
 
 ## 환경
 
@@ -29,9 +32,12 @@ Plugins/VerseGame/           ★ Verse 코드 루트 (VersePath /ue6.local/Verse
     ├── ConcurrencyDemoComponent.verse  sync / race / branch 데모
     ├── OrbitSystemComponent.verse      런타임 엔티티 계층 생성 + 궤도
     ├── PlayerProximityComponent.verse  플레이어와의 거리에 따라 라이트 변화
-    └── InputRelayComponent.verse       플레이어 이동 속도에 반응
+    └── InputRelayComponent.verse       이동 속도 · 상승 · 낙하 판정
 
-docs/                        ★ 작업 기록
+Content/VerseTest/           ★ 엔티티 프리팹
+└── Prefab_Player            폰 BP 가 참조 - 플레이어 엔티티의 구성
+
+docs/                        ★ 작업 기록 + 스크린샷
 ```
 
 ★ 표시가 템플릿에 없던, 이번에 추가한 부분입니다.
@@ -40,7 +46,7 @@ docs/                        ★ 작업 기록
 
 1. git 초기화 + UE용 `.gitignore` (재생성 가능한 500MB 제외)
 2. `EntityFramework`(Scene Graph, Beta) 활성화
-3. `VerseGame` 플러그인 + Verse 컴포넌트 2종 작성
+3. `VerseGame` 플러그인 + Verse 컴포넌트 7종 작성
 4. 씬 그래프를 코드로 다루기 위한 C++ 유틸리티 추가
 5. 레벨에 엔티티 생성 → `spin_component` 부착 → PIE에서 회전 검증
 6. `sphere_light_component` + `light_pulse_component`로 눈에 보이는 결과 확보
@@ -58,8 +64,20 @@ docs/                        ★ 작업 기록
   C++ 브릿지로 해결했습니다 (문서의 벽 ⑫·⑬).
 - **메시**를 엔티티에 붙이는 것. 씬 그래프는 메시 에셋마다 생성된 전용 컴포넌트
   클래스를 붙이는 구조인데, 이 환경에는 그런 클래스가 하나도 없습니다
-  (문서의 벽 ⑦·⑧). 대신 **라이트**로 시각화했습니다 — 라이트는 에셋 참조가
+  (문서의 벽 ⑤·⑥). 대신 **라이트**로 시각화했습니다 — 라이트는 에셋 참조가
   없어서 클래스가 이미 존재합니다.
+
+## 현재 레벨 구성
+
+PIE 를 켜면 네 가지가 동시에 돌아갑니다.
+
+| 엔티티 | 하는 일 |
+|---|---|
+| `SpinnerEntity` | 회전 + 라이트 맥동/색상 순환 |
+| `ConcurrencyDemo` | `sync` → `race` → 반복 (색으로 단계 구분) |
+| `OrbitSystem` | 런타임 생성 위성 5개가 궤도를 돌며 플레이어 거리에 반응 |
+| `InputBeacon0~2` | 플레이어 이동 속도 · 상승 · 낙하에 반응 |
+| 플레이어 폰 | `Prefab_Player` 로 자동 브릿지 — 라이트가 따라다님 |
 
 ## 문서
 

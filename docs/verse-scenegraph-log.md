@@ -1,11 +1,55 @@
 # UE6 Verse / Scene Graph 실습 기록
 
-> 2026-08-23 · UE 6.0.0 소스 빌드(`D:\UnrealEngine`, 브랜치 `ue6-main`) · 스톡 서드퍼슨 템플릿에서 시작
+> 2026-08-23 ~ 08-24 · UE 6.0.0 소스 빌드(`D:\UnrealEngine`, 브랜치 `ue6-main`)
+> · 스톡 서드퍼슨 템플릿에서 시작
 
 목표: **UE6에서 Verse가 뭔지 파악하고, 켜고, 실제로 레벨에서 돌려보기.**
 
-결론부터: 됩니다. 다만 문서에 안 나오는 벽이 여섯 개 있었고, 그 대부분은
-"엔진 소스를 직접 읽어야만 알 수 있는" 것들이었습니다. 이 문서는 그 과정 기록입니다.
+결론부터: 됩니다. 다만 문서에 안 나오는 벽이 **17개** 있었고, 대부분은
+"엔진 소스를 직접 읽어야만 알 수 있는" 것들이었습니다. 그중 여럿은 에러도
+경고도 없이 **조용히 다른 결과**가 나오는 종류라 로그만 봐서는 못 찾습니다.
+
+## 결국 만든 것
+
+| | 무엇 | 어디 |
+|---|---|---|
+| 1 | Verse 컴포넌트 수명주기 (`OnBeginSimulation` / `OnSimulate<suspends>`) | [HelloComponent](../Plugins/VerseGame/Content/HelloComponent.verse) · [SpinComponent](../Plugins/VerseGame/Content/SpinComponent.verse) |
+| 2 | 라이트 제어 (밝기 맥동 + 색상 순환) | [LightPulseComponent](../Plugins/VerseGame/Content/LightPulseComponent.verse) |
+| 3 | 동시성 `sync` / `race` / `branch` 와 취소 검증 | [ConcurrencyDemoComponent](../Plugins/VerseGame/Content/ConcurrencyDemoComponent.verse) |
+| 4 | 런타임 엔티티 계층 생성 (궤도 위성 5개) | [OrbitSystemComponent](../Plugins/VerseGame/Content/OrbitSystemComponent.verse) |
+| 5 | 플레이어 폰을 씬 그래프로 브릿지 (C++ 인터롭 서브시스템) | [UE6ActorEntitySubsystem](../Source/UE6/SceneGraph/UE6ActorEntitySubsystem.h) |
+| 6 | 거리 기반 상호작용 | [PlayerProximityComponent](../Plugins/VerseGame/Content/PlayerProximityComponent.verse) |
+| 7 | 입력 반응 (이동 속도 · 상승 · 낙하 판정) | [InputRelayComponent](../Plugins/VerseGame/Content/InputRelayComponent.verse) |
+
+## 끝내 막힌 것
+
+- **빙의(possession)를 일으키는 것** — `possessor_component`가 통째로 `<internal>`이라
+  `BeginPossess`를 부를 수단이 없습니다 (벽 ⑫)
+- **Verse에서 직접 입력을 받는 것** — 공개 입력 API가 존재하지 않습니다 (벽 ⑯).
+  입력의 *결과*를 트랜스폼으로 읽어 우회했습니다
+- **`scene_event` 푸시 전파** — 컴파일은 되는데 런타임에 도착하지 않았습니다.
+  순회(pull) 방식으로 우회했고 원인은 끝까지 추적하지 않았습니다 (15장)
+
+## 목차
+
+| 절 | 내용 | 벽 |
+|---|---|---|
+| 0 | 출발점 | |
+| 1 | Verse 코드는 어디에 놓이는가 | ① ② |
+| 2 | 첫 컴포넌트 | |
+| 3 | 에디터 없이 컴파일 검증 | ③ |
+| 4 | 레벨에 붙이기 — 막힌 네 갈래 | ④ |
+| 5 | C++ 유틸리티 | ⑤ ⑥ |
+| 6 | 붙였는데 저장이 안 된다 | ⑦ |
+| 7 | 에디터를 MCP로 조작하기 | ⑧ |
+| 8 | 회전 검증 | |
+| 9 | 라이트로 시각화 문제 풀기 | ⑨ |
+| 10 | 동시성 | ⑩ |
+| 11 | 엔티티 계층 절차적 생성 | ⑪ |
+| 12 | 플레이어와 엮기 — 일단 막혔다 | ⑫ |
+| 13 | C++ 브릿지로 뚫기 | ⑬ ⑭ |
+| 14 | 거리 기반 상호작용 | ⑮ |
+| 15 | 입력 처리 | ⑯ ⑰ |
 
 ---
 
@@ -169,7 +213,7 @@ GetAllEntities(World) / GetEntityComponents(Entity)
 Build.cs에 `Entity`, `EntityLevel` 모듈을 추가하면 됩니다. 메시용 헬퍼는
 에디터 모듈에만 있어서 `if (Target.bBuildEditor)`로 감쌌습니다.
 
-### 벽 ⑦ — 씬 그래프에는 "메시 프로퍼티"가 없다
+### 벽 ⑤ — 씬 그래프에는 "메시 프로퍼티"가 없다
 
 엔티티를 화면에 보이게 하려고 큐브를 붙이려다 막혔습니다. `mesh_component`에
 `Mesh` 필드가 있긴 한데 `epic_internal`이고, 에디터가 쓰는 경로는 완전히 다릅니다:
@@ -191,7 +235,7 @@ UE::SceneGraphAPI::GetOrCreateComponentByType(Entity, MeshComponentClass);
 2. uplugin에 에셋 리플렉션 활성화
 3. 에디터 재시작 + `Verse.RebuildAssetDigest` 콘솔 명령
 
-### 벽 ⑧ — uplugin의 JSON 키 이름은 C++ 멤버 이름과 다르다
+### 벽 ⑥ — uplugin의 JSON 키 이름은 C++ 멤버 이름과 다르다
 
 처음에 `"bEnableVerseAssetReflection": true`라고 썼는데 아무 일도 일어나지 않았습니다.
 `PluginDescriptor.h`의 멤버 이름이 `bEnableVerseAssetReflection`이라 그대로 쓴 건데,
@@ -207,6 +251,10 @@ TryGetBoolField(Object, TEXT("EnableSceneGraph"),           Result.bEnableSceneG
 생성되고 `VerseGame-Assets.digest.verse`가 나오기 시작했습니다.
 
 ### 그래도 메시는 미해결
+
+> **이후:** 메시는 끝내 못 붙였지만, 시각 확인 자체는 **라이트로 해결**했습니다(9장).
+> 그리고 여기서 "프리팹 저작이 막혔다"고 본 것은 **경로에 따라 다르다**는 게
+> 나중에 드러납니다 — C++ 경유로는 됩니다(13장).
 
 키를 고친 뒤에도 결과는 이랬습니다:
 
@@ -240,7 +288,7 @@ Fortnite 쪽 콘텐츠 파이프라인을 거친 에셋이 필요해 보입니�
 
 ---
 
-## 6. 두 번째 벽: 붙였는데 저장이 안 된다
+## 6. 두 번째 벽 — 붙였는데 저장이 안 된다
 
 첫 구현은 `entity->GetOrCreateComponentByType()`을 썼습니다. 결과:
 
@@ -250,7 +298,7 @@ Fortnite 쪽 콘텐츠 파이프라인을 거친 에셋이 필요해 보입니�
 
 `Modify()`를 불러도 소용없었습니다. 로그에 경고 한 줄 없이 조용히 빠집니다.
 
-### 벽 ⑤ — 이름이 같은 함수가 두 개 있다
+### 벽 ⑦ — 이름이 같은 함수가 두 개 있다
 
 에디터가 실제로 쓰는 코드를 grep해서 찾았습니다:
 
@@ -284,7 +332,7 @@ MCP 서버를 띄웁니다(툴셋 72개). Claude Code 설정을 건드리지 않
 - `describe_toolset`의 파라미터명은 `toolset`이 아니라 **`toolset_name`**
 - `execute_python`의 `script`는 문자열이 아니라 **`{"content": ..., "language": "Python"}`** CodeBlock 객체
 
-### 벽 ⑥ — 에디터가 백그라운드면 MCP가 응답하지 않는다
+### 벽 ⑧ — 에디터가 백그라운드면 MCP가 응답하지 않는다
 
 TCP 연결은 받아들이는데 응답이 없어서 한참 헤맸습니다. UE 에디터는 포그라운드가
 아니면 게임스레드 틱을 스로틀링하고, MCP HTTP 핸들러가 게임스레드에서 돌기 때문입니다.
@@ -318,7 +366,7 @@ TCP 연결은 받아들이는데 응답이 없어서 한참 헤맸습니다. UE 
 
 ---
 
-## 9. 후일담 — 라이트로 시각화 문제 풀기
+## 9. 라이트로 시각화 문제 풀기
 
 메시가 막혀서 "화면으로 확인할 방법이 없다"고 정리했었는데, 다시 보니 틀린
 결론이었습니다. **라이트 컴포넌트는 그냥 됩니다.**
@@ -326,6 +374,9 @@ TCP 연결은 받아들이는데 응답이 없어서 한참 헤맸습니다. UE 
 메시가 안 됐던 이유는 에셋마다 생성되는 전용 컴포넌트 클래스가 필요해서인데,
 라이트는 에셋 참조가 없으니 그런 게 필요 없습니다. 클래스가 이미
 `/EntityFramework/_Verse/VNI/Component`에 들어 있습니다.
+
+![라이트를 붙인 직후](images/04-sphere-light-entity.png)
+*`sphere_light_component`만 붙인 상태. 메시가 없어도 바닥에 빛이 떨어진다.*
 
 ### 먼저 뭐가 열려 있는지 컴파일러에 물어보기
 
@@ -549,7 +600,7 @@ entity_4      250.0      240.8     164.3     -76.5
 
 ---
 
-## 12. 플레이어와 엮기 — 여기서 막혔다
+## 12. 플레이어와 엮기 — 일단 막혔다
 
 `possessable_component`가 접근 가능 목록에 있길래 플레이어와 Verse 엔티티를
 연결해 보려 했습니다. **결론부터: 이 빌드에서 사용자 코드로는 불가능합니다.**
@@ -640,6 +691,10 @@ Entity = PrefabComponent->CreateEntity(Outer, Name);
 여기까지 되면 플레이어가 씬 그래프에 들어오고, Verse에서 트리 순회로 찾아
 거리 기반 반응 같은 걸 만들 수 있습니다. 다만 **빙의 자체는 여전히 불가능**합니다 —
 `possessor_component`가 통째로 내부용이라 우회로가 없습니다.
+
+> **이후(13장):** 실제로 해보니 진짜 원인은 위 세 가지가 아니라 **인터롭 서브시스템에
+> 구체 클래스가 없다는 것**이었습니다(벽 ⑬). 프리팹(2번)도 필요 없었습니다.
+> 브릿지는 성공했고, 빙의만 예상대로 끝내 막혔습니다.
 
 ---
 
@@ -1077,11 +1132,11 @@ Airborne := if (Rising?) then true else Falling
 | ① | uproject에 Verse 필드가 없음 | `PluginDescriptor.h` vs `ProjectDescriptor.h` 비교 |
 | ② | `Print`가 EntityFramework에 안 딸려옴 | 생성된 `.vproject`의 `dependencyPackages` 확인 |
 | ③ | Verse 컴파일러가 실패해도 exit 0 | 일부러 깨뜨려서 확인 |
-| ④ | epic_internal은 도메인 기준 게이팅 | `VerseScope` 바꿔보고 에러 메시지 확인 |
-| ⑤ | 같은 이름의 함수 두 개 (멤버 vs SceneGraphAPI) | 에디터 자체 코드 grep |
-| ⑥ | 백그라운드 에디터는 MCP 응답 없음 | 창 포그라운드로 올려보고 확인 |
-| ⑦ | 메시는 에셋별 생성 컴포넌트 클래스로 붙임 | 에디터 배치 팩토리 코드 추적 |
-| ⑧ | uplugin JSON 키에는 `b` 접두사가 없음 (조용히 무시됨) | `PluginDescriptor.cpp`의 `TryGetBoolField` 확인 |
+| ④ | epic_internal은 스코프가 아니라 도메인 기준 게이팅 | `VerseScope` 바꿔보고 에러 메시지 확인 |
+| ⑤ | 메시는 에셋별 생성 컴포넌트 클래스로 붙임 | 에디터 배치 팩토리 코드 추적 |
+| ⑥ | uplugin JSON 키에는 `b` 접두사가 없음 (조용히 무시됨) | `PluginDescriptor.cpp`의 `TryGetBoolField` 확인 |
+| ⑦ | 같은 이름의 함수 두 개 (멤버 vs `UE::SceneGraphAPI`) | 에디터 자체 코드 grep |
+| ⑧ | 백그라운드 에디터는 MCP 응답 없음 | 창 포그라운드로 올려보고 확인 |
 | ⑨ | 연속 캡처가 바이트 단위로 동일 | 캡처 사이에 에디터를 틱시켜 해결 |
 | ⑩ | `branch`는 루프 안에서 금지 (V3552) | 컴파일 에러로 확인, 루프 밖으로 이동 |
 | ⑪ | `no_rollback` 함수는 `if` 실패 컨텍스트에서 호출 불가 (V3512) | 옵셔널 반환을 없애서 해결 |
