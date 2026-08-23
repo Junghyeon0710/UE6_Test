@@ -741,8 +741,42 @@ Z의 소수점 변화까지 그대로 따라옵니다. 여기에 `sphere_light_c
   방식으로 우회했습니다.
 - `FindActorForEntity` 역방향 조회는 `None`을 돌려줬습니다. 매핑 등록 경로가
   따로 있는 듯한데 추적하지 않았습니다.
-- 브릿지는 PIE 세션마다 런타임에 걸어야 합니다. 영구화하려면 폰 블루프린트에
-  `UActorEntityComponent`를 직접 추가해야 합니다.
+- ~~브릿지는 PIE 세션마다 런타임에 걸어야 합니다.~~ **해결됨** — 아래 참고.
+
+### 영구화 — 폰 블루프린트에 컴포넌트 추가
+
+`BP_ThirdPersonCharacter`에 `UActorEntityComponent`를 직접 넣으면 매번 스크립트를
+돌릴 필요가 없습니다. 파이썬의 `SubobjectDataSubsystem`으로 붙였습니다:
+
+```python
+sds = unreal.get_engine_subsystem(unreal.SubobjectDataSubsystem)
+handles = sds.k2_gather_subobject_data_for_blueprint(bp)
+params = unreal.AddNewSubobjectParams(
+    parent_handle=handles[0], new_class=unreal.ActorEntityComponent, blueprint_context=bp)
+new_handle, fail = sds.add_new_subobject(params)
+unreal.BlueprintEditorLibrary.compile_blueprint(bp)
+```
+
+> 참고: 앞서 엔티티 프리팹에 이 API를 썼을 땐 핸들이 0개였습니다(벽 ④).
+> **일반 블루프린트에서는 정상 동작합니다** — 씬 그래프 프리팹만 별도 체계를 씁니다.
+
+검증 — 스크립트 개입 없이 PIE만 켜고 조회했습니다:
+
+```
+폰: BP_ThirdPersonCharacter_C_0 (0.0, 0.0, 302.0)
+
+스크립트 개입 없이 조회한 엔티티:
+  ...SimulationEntity.BP_ThirdPersonCharacter_C_1
+  컴포넌트: ['replication_component', 'transform_component',
+             'tag_component', 'possessable_component']
+  트랜스폼: (0.0, 0.0, 302.0)
+```
+
+이제 플레이어는 **PIE를 켜는 순간 자동으로** 씬 그래프에 들어옵니다.
+
+다만 Verse 컴포넌트(`light_pulse_component` 등)를 그 엔티티에 붙이는 것은 여전히
+런타임 작업입니다. 그것까지 영구화하려면 `UActorEntityPrefabComponent`에
+컴포넌트를 가진 프리팹을 물려야 하는데, 프리팹 저작 문제(벽 ④·⑦)로 되돌아갑니다.
 
 ---
 
