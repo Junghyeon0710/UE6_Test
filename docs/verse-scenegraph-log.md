@@ -318,6 +318,96 @@ TCP 연결은 받아들이는데 응답이 없어서 한참 헤맸습니다. UE 
 
 ---
 
+## 9. 후일담 — 라이트로 시각화 문제 풀기
+
+메시가 막혀서 "화면으로 확인할 방법이 없다"고 정리했었는데, 다시 보니 틀린
+결론이었습니다. **라이트 컴포넌트는 그냥 됩니다.**
+
+메시가 안 됐던 이유는 에셋마다 생성되는 전용 컴포넌트 클래스가 필요해서인데,
+라이트는 에셋 참조가 없으니 그런 게 필요 없습니다. 클래스가 이미
+`/EntityFramework/_Verse/VNI/Component`에 들어 있습니다.
+
+### 먼저 뭐가 열려 있는지 컴파일러에 물어보기
+
+추측하지 않고, 컴포넌트 타입을 파라미터로 받는 더미 함수를 잔뜩 만들어
+한 번에 컴파일했습니다. 컴파일러가 접근 위반을 전부 모아서 알려줍니다.
+
+```verse
+probe_light(X:light_component):void = {}
+probe_sound(X:sound_component):void = {}
+probe_physics(X:physics_component):void = {}
+...
+```
+
+| 쓸 수 있음 | 막힘 |
+|---|---|
+| `sphere_light` / `spot_light` / `directional_light` / `rect_light` / `capsule_light` | `physics_component` (epic_internal) |
+| `sound_component`, `particle_system_component` | `decal_component`, `text_display_component` |
+| `possessable_component`, `collision_volume` | `presentation_component`, `replication_component` |
+| `mesh_component` (타입만) | `possessor_component` (internal) |
+
+언어 기능 — `race` / `sync` / `branch` / `loop` / `Sleep`, `NamedColors`, `tag` — 은 전부 통과했습니다.
+
+### 만든 것
+
+[`LightPulseComponent.verse`](../Plugins/VerseGame/Content/LightPulseComponent.verse) —
+같은 엔티티의 `sphere_light_component`를 찾아 밝기를 사인파로 맥동시키고
+색상환을 순환시킵니다.
+
+```verse
+Wave := (Sin(Elapsed / PulsePeriod * 2.0 * PiFloat) + 1.0) / 2.0
+set Light.Intensity = MinIntensity + (MaxIntensity - MinIntensity) * Wave
+
+set Hue = Hue + 360.0 * UpdateInterval / ColorCyclePeriod
+if (Hue > 360.0):
+    set Hue = Hue - 360.0
+set Light.ColorFilter = MakeColorFromHSV(Hue, 0.85, 1.0)
+```
+
+`sphere_light_component`의 `Intensity` / `AttenuationRadius` / `SourceRadius`와
+`light_component`의 `ColorFilter` / `CastShadows` / `SpecularScale` / `DiffuseScale`가
+`<public>`이라 그대로 쓸 수 있습니다.
+
+| | |
+|---|---|
+| ![어두운 주황](images/05-light-pulse-warm.png) | ![밝은 초록](images/06-light-pulse-green.png) |
+
+같은 카메라에서 1.5초 간격으로 찍은 두 프레임입니다.
+
+### 벽 ⑨ — 캡처가 계속 똑같이 나온다
+
+시간에 따라 변하는 걸 스크린샷으로 남기려는데 세 장이 **바이트 단위로 동일**했습니다.
+에디터 뷰포트가 그 사이에 다시 렌더되지 않기 때문입니다. MCP 호출이 게임스레드를
+한 번 틱시키긴 하지만 캡처가 같은 틱에서 일어납니다.
+
+해결은 캡처 사이에 에디터를 실제로 돌려주는 것이었습니다:
+
+```python
+for i in range(30):
+    await asyncio.sleep(0.05)          # 에디터가 틱하도록 양보
+unreal.EditorLevelLibrary.editor_invalidate_viewports()
+```
+
+### 참고 — Verse 프로퍼티는 파이썬에서 못 읽는다
+
+`Intensity` 값을 수치로 확인하려 했지만 `get_editor_property`로는 안 됩니다:
+
+```
+Failed to find property '_Intensity' for attribute '_Intensity' on 'sphere_light_component'
+```
+
+Verse가 생성한 프로퍼티는 파이썬 리플렉션에 노출되지 않습니다. 수치가 필요하면
+C++ 래퍼를 하나 더 만들어야 하고, 그렇지 않으면 화면으로 확인해야 합니다.
+
+### 새 파일을 추가하면 에디터 재시작이 필요하다
+
+`.verse` 파일을 새로 만들면 실행 중인 에디터가 자동으로 잡지 않습니다.
+`Verse.Build` 콘솔 명령은 존재하지 않는 명령이라 무시되고(콘솔은 모르는 명령도
+그냥 echo합니다), `Build Verse Code` 단축키(Ctrl+Shift+B)를 SendKeys로 보내도
+반응이 없었습니다. 결국 재시작해야 잡힙니다. 기존 파일 수정은 자동으로 잡힙니다.
+
+---
+
 ## 삽질 요약
 
 | # | 벽 | 알아낸 방법 |
@@ -330,6 +420,7 @@ TCP 연결은 받아들이는데 응답이 없어서 한참 헤맸습니다. UE 
 | ⑥ | 백그라운드 에디터는 MCP 응답 없음 | 창 포그라운드로 올려보고 확인 |
 | ⑦ | 메시는 에셋별 생성 컴포넌트 클래스로 붙임 | 에디터 배치 팩토리 코드 추적 |
 | ⑧ | uplugin JSON 키에는 `b` 접두사가 없음 (조용히 무시됨) | `PluginDescriptor.cpp`의 `TryGetBoolField` 확인 |
+| ⑨ | 연속 캡처가 바이트 단위로 동일 | 캡처 사이에 에디터를 틱시켜 해결 |
 
 ## 다시 한다면
 
@@ -338,3 +429,5 @@ TCP 연결은 받아들이는데 응답이 없어서 한참 헤맸습니다. UE 
 3. 씬 그래프를 코드로 다룰 거면 처음부터 `UE::SceneGraphAPI` 네임스페이스만 쓴다
 4. 에디터 자동화 전에 창을 포그라운드로 올린다
 5. uplugin에 플래그를 넣었는데 아무 반응이 없으면 오타를 의심한다 — 검증도 경고도 없다
+6. 뭐가 되는지 궁금하면 더미 함수로 컴파일 프로브를 돌린다. 문서보다 컴파일러가 정확하다
+7. 시각 확인이 필요한데 메시가 막히면 라이트를 쓴다

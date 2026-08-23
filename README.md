@@ -23,8 +23,9 @@ Source/UE6/
 
 Plugins/VerseGame/           ★ Verse 코드 루트 (VersePath /ue6.local/VerseGame)
 └── Content/
-    ├── HelloComponent.verse
-    └── SpinComponent.verse
+    ├── HelloComponent.verse      기본형 (OnBeginSimulation / OnSimulate)
+    ├── SpinComponent.verse       엔티티 회전
+    └── LightPulseComponent.verse 라이트 맥동 + 색상 순환
 
 docs/                        ★ 작업 기록
 ```
@@ -38,12 +39,14 @@ docs/                        ★ 작업 기록
 3. `VerseGame` 플러그인 + Verse 컴포넌트 2종 작성
 4. 씬 그래프를 코드로 다루기 위한 C++ 유틸리티 추가
 5. 레벨에 엔티티 생성 → `spin_component` 부착 → PIE에서 회전 검증
+6. `sphere_light_component` + `light_pulse_component`로 눈에 보이는 결과 확보
 
 ### 미해결
 
-- 엔티티에 메시를 붙여 화면에 보이게 하는 것. 씬 그래프는 메시 에셋마다 생성된
-  전용 컴포넌트 클래스를 붙이는 구조인데, 이 환경에는 그런 클래스가 하나도 없습니다.
-  자세한 조사 내용은 문서의 벽 ⑦·⑧ 참고.
+- **메시**를 엔티티에 붙이는 것. 씬 그래프는 메시 에셋마다 생성된 전용 컴포넌트
+  클래스를 붙이는 구조인데, 이 환경에는 그런 클래스가 하나도 없습니다
+  (문서의 벽 ⑦·⑧). 대신 **라이트**로 시각화했습니다 — 라이트는 에셋 참조가
+  없어서 클래스가 이미 존재합니다.
 
 ## 문서
 
