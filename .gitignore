@@ -1,0 +1,41 @@
+# ---- IDE / editor ----
+.vs/
+.idea/
+*.sln
+*.slnx
+*.suo
+*.opensdf
+*.sdf
+*.VC.db
+*.VC.opendb
+*.xcodeproj
+*.xcworkspace
+# UBT가 생성하는 Verse 워크스페이스(절대 경로 포함)
+*.code-workspace
+
+# ---- 빌드 산출물 ----
+Binaries/
+Plugins/*/Binaries/
+Intermediate/
+Plugins/*/Intermediate/
+Build/
+*.o
+*.obj
+*.pch
+*.gch
+*.so
+*.dylib
+*.dll
+*.lib
+*.a
+*.exe
+*.pdb
+
+# ---- 에디터 생성물 / 캐시 ----
+Saved/
+DerivedDataCache/
+*_BuiltData.uasset
+
+# ---- 소스 아트 ----
+SourceArt/**/*.png
+SourceArt/**/*.tga

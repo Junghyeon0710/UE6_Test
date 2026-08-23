@@ -1,0 +1,15 @@
+# 텍스트 파일 줄바꿈 정규화
+*.cpp   text
+*.h     text
+*.cs    text
+*.ini   text
+*.verse text
+*.vmodule text
+*.uproject text
+*.uplugin  text
+
+# 언리얼 바이너리 에셋 - diff/merge 금지
+*.uasset binary
+*.umap   binary
+*.upk    binary
+*.udk    binary
