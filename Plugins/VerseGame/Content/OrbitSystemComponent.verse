@@ -41,10 +41,12 @@ orbit_system_component<public> := class<final_super>(component):
 
         Tc := transform_component{ Entity := Child }
         Light := sphere_light_component{ Entity := Child }
-        Child.AddComponents(array{ Tc, Light })
+        # 플레이어가 다가오면 각 위성이 스스로 반응한다
+        Prox := player_proximity_component{ Entity := Child }
+        Child.AddComponents(array{ Tc, Light, Prox })
         Entity.AddEntities(array{ Child })
 
-        # 위성마다 색상환을 나눠 갖는다
+        # 초기 색상. 시뮬레이션이 시작되면 player_proximity_component 가 덮어쓴다.
         Hue := 360.0 * Index / (1.0 * SatelliteCount)
         set Light.ColorFilter = MakeColorFromHSV(Hue, 0.9, 1.0)
         set Light.Intensity = SatelliteIntensity

@@ -846,6 +846,80 @@ LevelEntity
 
 ---
 
+## 14. 거리 기반 상호작용
+
+13장에서 플레이어가 `LevelEntity` 트리로 들어왔으니, 이제 Verse 컴포넌트가
+트리를 순회해 플레이어를 찾을 수 있습니다.
+
+[`PlayerProximityComponent.verse`](../Plugins/VerseGame/Content/PlayerProximityComponent.verse) —
+플레이어와의 거리에 따라 자기 라이트의 밝기와 색을 바꿉니다.
+궤도 위성 5개에 각각 붙였습니다.
+
+### 플레이어를 어떻게 식별하나
+
+`possessable_component`의 유무로 판별합니다. 브릿지된 폰에만 자동으로 붙기 때문에
+별도의 태그 없이도 구분됩니다.
+
+```verse
+FindPossessable(Root:entity)<transacts>:?entity =
+    var Found:?entity = false
+    for (E : CollectAll(Root)):
+        if (not Found?, E.GetComponent[possessable_component]):
+            set Found = option{ E }
+    Found
+```
+
+### 벽 ⑮ — `var`를 쓰면 `<reads>`로 선언할 수 없다
+
+처음에 순회 함수를 `<reads>`로 선언했더니:
+
+```
+V3512: This mutable data definition has the 'allocates' effect,
+       which is not allowed by its context.
+```
+
+**`var` 선언 자체가 `allocates` 이펙트**입니다. `<reads>`는 그걸 허용하지 않으므로
+`<transacts>`로 올려야 합니다. 그리고 `<decides>` 함수는 괄호가 아니라
+대괄호로 불러야 합니다 (`GetWorldLocation[Entity]`).
+
+### 검증 설계를 한 번 틀렸다
+
+처음엔 시뮬레이트 모드에서 캐릭터를 배치해 테스트했는데 아무 반응이 없었습니다.
+엔티티 목록을 찍어보니:
+
+```
+BP_ThirdPersonCharacter_0_...   ['transform_component']     <- possessable 없음
+```
+
+**시뮬레이트 모드에는 에이전트가 없어서 `possessable_component`가 붙지 않습니다.**
+컴포넌트는 정상 동작하고 있었고 — 플레이어를 못 찾았으니 어둡게 유지 — 제
+테스트 설계가 틀렸던 겁니다. 플레이 모드로 바꾸니 바로 나왔습니다.
+
+### 픽셀로 검증하기
+
+Verse 프로퍼티는 파이썬에서 읽을 수 없으므로(9장), 스크린샷의 픽셀 통계를 썼습니다.
+플레이어를 궤도 쪽으로 걸어 들어가게 하면서 세 지점에서 촬영하고 뷰포트 영역의
+평균 색을 계산했습니다.
+
+| 궤도까지 거리 | 평균 밝기 | R−B (붉은기) |
+|---:|---:|---:|
+| 1300 | 173.69 | **−43.57** (푸른기) |
+| 800 | 203.70 | +19.00 |
+| 300 | 223.12 | **+88.58** (붉은기) |
+
+밝기와 색상 모두 **단조 변화**합니다. 설계 의도(멀면 어둡고 푸른색, 가까우면 밝고
+붉은색)와 정확히 일치합니다.
+
+| 멀 때 (1300) | 가까울 때 (300) |
+|---|---|
+| ![far](images/12-proximity-far.png) | ![near](images/13-proximity-near.png) |
+
+> 눈짐작 대신 픽셀 통계를 쓴 게 도움이 됐습니다. 처음 시도(시뮬레이트 모드)에서
+> 밝기 변화가 −1.4%, 붉은기가 오히려 반대 방향으로 나왔고, 그 수치 덕분에
+> "차이가 없다"를 확신하고 원인을 찾으러 갈 수 있었습니다.
+
+---
+
 ## 삽질 요약
 
 | # | 벽 | 알아낸 방법 |
@@ -864,6 +938,7 @@ LevelEntity
 | ⑫ | 이름은 `<public>`인데 클래스가 `<epic_internal>` — 참조만 되고 생성 불가 | 생성까지 프로브해서 확인 |
 | ⑬ | 인터롭 서브시스템이 Abstract 인데 구체 클래스가 엔진에 없음 | 파생 클래스 스캔, 직접 구현 |
 | ⑭ | BP 컴포넌트 생성 순서에 따라 조용히 다른 결과 | 런타임 컴포넌트 순서 확인 후 재정렬 |
+| ⑮ | `var` 선언은 `allocates` 이펙트 — `<reads>` 함수에 못 넣는다 | 컴파일 에러(V3512), `<transacts>`로 변경 |
 
 ## 다시 한다면
 
@@ -879,3 +954,5 @@ LevelEntity
 10. 접근 가능 프로브는 타입 참조가 아니라 **생성까지** 시도해야 의미가 있다
 11. 파라미터 이름을 믿지 말고 구현을 읽는다 (`bAllowCreateEntity`는 쓰이지도 않는다)
 12. "막혔다"는 결론은 경로별로 다시 검증한다 — 프리팹 저작은 Verse에서만 막혔고 C++로는 됐다
+13. 결과가 안 나오면 코드보다 **테스트 설계**를 먼저 의심한다 (시뮬레이트 모드엔 에이전트가 없다)
+14. 눈으로 판단하기 애매하면 스크린샷 픽셀 통계를 낸다 — 단조성 확인에 충분하다
