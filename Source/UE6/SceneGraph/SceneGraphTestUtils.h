@@ -41,6 +41,16 @@ public:
 	UFUNCTION(BlueprintCallable, Category="SceneGraph|Test")
 	static TArray<UObject*> GetAllEntities(UObject* WorldContextObject);
 
+	/**
+	 *  엔티티에 스태틱 메시를 붙여 화면에 보이게 한다(에디터 전용).
+	 *
+	 *  씬 그래프는 메시를 컴포넌트 프로퍼티로 들고 있지 않고, 에셋마다 전용
+	 *  컴포넌트 클래스를 생성해 쓴다. 그 클래스를 찾아주는 헬퍼가 에디터
+	 *  모듈에만 있어서 이 함수도 에디터 빌드에서만 동작한다.
+	 */
+	UFUNCTION(BlueprintCallable, Category="SceneGraph|Test")
+	static UObject* AddStaticMeshToEntity(UObject* Entity, UStaticMesh* Mesh);
+
 	/** 엔티티에 붙어 있는 컴포넌트 목록. */
 	UFUNCTION(BlueprintCallable, Category="SceneGraph|Test")
 	static TArray<UObject*> GetEntityComponents(UObject* Entity);

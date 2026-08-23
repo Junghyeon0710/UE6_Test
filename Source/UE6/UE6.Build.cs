@@ -26,6 +26,12 @@ public class UE6 : ModuleRules
 
 		PrivateDependencyModuleNames.AddRange(new string[] { });
 
+		// AddStaticMeshToEntity 가 쓰는 FAssetComponentHelpers 는 에디터 모듈에만 있다.
+		if (Target.bBuildEditor)
+		{
+			PrivateDependencyModuleNames.Add("EntityEditor");
+		}
+
 		PublicIncludePaths.AddRange(new string[] {
 			"UE6",
 			"UE6/Variant_Platforming",

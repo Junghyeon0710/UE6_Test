@@ -12,6 +12,12 @@
 #include "Engine/Level.h"
 #include "Engine/World.h"
 
+#if WITH_EDITOR
+#include "AssetRegistry/AssetData.h"
+#include "Components/AssetComponentHelpers.h"
+#include "Engine/StaticMesh.h"
+#endif
+
 namespace
 {
 	/** UObject 를 엔티티로 안전하게 캐스팅한다. */
@@ -51,9 +57,9 @@ UObject* USceneGraphTestUtils::SpawnEntityWithComponents(UObject* WorldContextOb
 	verse::entity* Entity = UE::SceneGraphUtil::CreateEntity(Params);
 
 	// 트랜스폼 컴포넌트가 있어야 엔티티가 씬에서 위치를 가진다.
-	if (verse::component* TransformComp = Entity->GetOrCreateComponentByType(verse::transform_component::StaticClass()))
+	if (verse::transform_component* TransformComp = UE::SceneGraphAPI::GetOrCreateComponentByType<verse::transform_component>(Entity))
 	{
-		CastChecked<verse::transform_component>(TransformComp)->SetGlobalFTransform(Transform);
+		TransformComp->SetGlobalFTransform(Transform);
 	}
 
 	for (UClass* ComponentClass : ComponentClasses)
@@ -79,7 +85,10 @@ UObject* USceneGraphTestUtils::AddComponentToEntity(UObject* EntityObject, UClas
 		return nullptr;
 	}
 
-	return Entity->GetOrCreateComponentByType(TypedClass);
+	// entity 의 멤버 함수가 아니라 UE::SceneGraphAPI 쪽을 써야 한다.
+	// 멤버 함수는 컴포넌트를 붙이기만 하고, 에디터가 변경을 인식하는 데 필요한
+	// 알림을 보내지 않아서 레벨에 직렬화되지 않는다.
+	return UE::SceneGraphAPI::GetOrCreateComponentByType(Entity, TypedClass);
 }
 
 bool USceneGraphTestUtils::GetEntityTransform(UObject* EntityObject, FTransform& OutTransform)
@@ -134,4 +143,29 @@ TArray<UObject*> USceneGraphTestUtils::GetEntityComponents(UObject* EntityObject
 	}
 
 	return Result;
+}
+
+UObject* USceneGraphTestUtils::AddStaticMeshToEntity(UObject* EntityObject, UStaticMesh* Mesh)
+{
+#if WITH_EDITOR
+	verse::entity* Entity = AsEntity(EntityObject);
+	if (!Entity || !Mesh)
+	{
+		return nullptr;
+	}
+
+	// 메시 에셋에 대응하는 컴포넌트 클래스를 찾는다.
+	// (씬 그래프는 에셋마다 전용 컴포넌트 클래스를 생성해 둔다)
+	const TSubclassOf<verse::component> MeshComponentClass =
+		FAssetComponentHelpers::FindAssetComponentChildClassForAssetData(FAssetData(Mesh));
+
+	if (!MeshComponentClass)
+	{
+		return nullptr;
+	}
+
+	return UE::SceneGraphAPI::GetOrCreateComponentByType(Entity, MeshComponentClass);
+#else
+	return nullptr;
+#endif
 }
