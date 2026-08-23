@@ -28,7 +28,8 @@ Plugins/VerseGame/           ★ Verse 코드 루트 (VersePath /ue6.local/Verse
     ├── LightPulseComponent.verse 라이트 맥동 + 색상 순환
     ├── ConcurrencyDemoComponent.verse  sync / race / branch 데모
     ├── OrbitSystemComponent.verse      런타임 엔티티 계층 생성 + 궤도
-    └── PlayerProximityComponent.verse  플레이어와의 거리에 따라 라이트 변화
+    ├── PlayerProximityComponent.verse  플레이어와의 거리에 따라 라이트 변화
+    └── InputRelayComponent.verse       플레이어 이동 속도에 반응
 
 docs/                        ★ 작업 기록
 ```
@@ -48,6 +49,7 @@ docs/                        ★ 작업 기록
 9. C++ 인터롭 서브시스템을 구현해 플레이어 폰을 씬 그래프로 브릿지
 10. 폰 블루프린트 + 엔티티 프리팹으로 영구화 — PIE만 켜면 플레이어에 Verse 라이트가 붙는다
 11. 거리 기반 상호작용 — 플레이어가 다가가면 궤도 위성이 밝고 붉게 반응
+12. 입력 반응 — 플레이어가 움직이면 비콘이 밝아진다 (Verse에 공개 입력 API가 없어 트랜스폼으로 우회)
 
 ### 미해결
 
