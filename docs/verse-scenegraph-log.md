@@ -549,6 +549,100 @@ entity_4      250.0      240.8     164.3     -76.5
 
 ---
 
+## 12. 플레이어와 엮기 — 여기서 막혔다
+
+`possessable_component`가 접근 가능 목록에 있길래 플레이어와 Verse 엔티티를
+연결해 보려 했습니다. **결론부터: 이 빌드에서 사용자 코드로는 불가능합니다.**
+왜 그런지 정리해 둡니다.
+
+### 벽 ⑫ — 이름은 public인데 클래스가 epic_internal
+
+접근 가능 프로브에서 `possessable_component`가 통과했던 건 **타입 이름**이
+`<public>`이기 때문이었습니다. 정의를 보면:
+
+```verse
+possessable_component<native><public> := class<final_super><epic_internal>(component):
+                       ^^^^^^^^                          ^^^^^^^^^^^^^^^
+                       이름은 공개                        클래스는 내부용
+```
+
+그래서 타입으로 **참조는 되지만 생성이 안 됩니다**:
+
+```
+V3593: Invalid access of epic_internal class constructor `possessable_component`
+```
+
+프로브를 짤 때 타입 참조만 확인하고 "쓸 수 있다"고 분류한 게 성급했습니다.
+**생성까지 시도해 봐야** 진짜 쓸 수 있는지 알 수 있습니다.
+
+### 무엇이 되고 무엇이 안 되는가
+
+| 동작 | 결과 |
+|---|---|
+| `possessable_component`를 타입으로 참조 | 가능 |
+| `Entity.GetComponent[possessable_component]` | 가능 |
+| `PossessableComp.Agent?` 로 빙의 주체 읽기 | 가능 |
+| `agent.GetComponent[transform_component]` | 가능 |
+| Verse에서 `possessable_component` **생성** | **불가** (생성자 epic_internal) |
+| C++에서 `possessable_component` 부착 | **가능** (C++은 Verse 스코프 제약을 안 받음) |
+| `possessor_component` 사용 | **불가** (클래스 전체가 `<internal>`) |
+| `BeginPossess` / `EndPossess` 호출 | **불가** (전부 internal) |
+
+즉 **빙의 상태를 읽을 수는 있지만 빙의를 일으킬 수는 없습니다.**
+
+### 더 근본적인 문제 — 플레이어가 씬 그래프에 없다
+
+읽기라도 하려면 플레이어를 찾아야 하는데, 그것도 막혔습니다.
+
+플레이 모드(`bSimulate: false`)로 PIE를 띄우고 레벨 엔티티 트리를 전부 훑어봤습니다:
+
+```
+PIE 엔티티 9개 — 전부 우리가 만든 것
+LevelEntity / SpinnerEntity / ConcurrencyDemo / OrbitSystem / entity_0..4
+```
+
+플레이어 폰은 없습니다. 에이전트 엔티티는 따로 존재하지만:
+
+```
+Simulation_player  BP_ThirdPersonPlayerController_C_0   컴포넌트 0개, 트랜스폼 없음
+```
+
+**플레이어 컨트롤러의 신원 토큰일 뿐 공간 정보가 없습니다.** 폰은 평범한 Actor고
+씬 그래프에 아무 존재감이 없습니다. `entity`의 공개 API는 `GetParent` /
+`GetEntities` / `GetComponent(s)` / `AddEntities` / `AddComponents` / `SendUp` /
+`SendDown` 뿐이라, 트리 밖에 있는 것은 Verse에서 도달할 방법이 없습니다.
+
+### 브릿지를 시도했지만
+
+`ActorEntityComponent`를 플레이어 폰에 붙여 봤습니다. 파이썬으로 객체 생성까지는
+되는데 `RegisterComponent`가 노출되지 않아 활성화되지 않았습니다. 코드를 읽어 보니
+그것만으로는 부족합니다:
+
+```cpp
+// ActorEntityComponent.cpp:292
+Entity = PrefabComponent->CreateEntity(Outer, Name);
+```
+
+`UActorEntityPrefabComponent`(+ 그 `EntityClass` 프리팹)가 먼저 있어야 엔티티가
+생기는 구조입니다. 프리팹은 에디터에서 저작해야 하고(벽 ④), 결국 여러 단계가
+엮여 있습니다.
+
+### 남은 선택지
+
+플레이어를 엮으려면 C++로 내려가야 합니다:
+
+1. 폰에 `UActorEntityPrefabComponent` + `UActorEntityComponent`를 붙이고 등록하는
+   C++ 함수를 만든다 (`RegisterComponent`는 C++에서 호출 가능)
+2. `EntityClass`로 쓸 빈 프리팹을 준비한다
+3. 브릿지된 엔티티가 `transform_component`를 갖는지 확인한다
+   (`ActorEntityComponent.cpp:446`에 interop 규칙에 따라 생성하는 코드가 있다)
+
+여기까지 되면 플레이어가 씬 그래프에 들어오고, Verse에서 트리 순회로 찾아
+거리 기반 반응 같은 걸 만들 수 있습니다. 다만 **빙의 자체는 여전히 불가능**합니다 —
+`possessor_component`가 통째로 내부용이라 우회로가 없습니다.
+
+---
+
 ## 삽질 요약
 
 | # | 벽 | 알아낸 방법 |
@@ -564,6 +658,7 @@ entity_4      250.0      240.8     164.3     -76.5
 | ⑨ | 연속 캡처가 바이트 단위로 동일 | 캡처 사이에 에디터를 틱시켜 해결 |
 | ⑩ | `branch`는 루프 안에서 금지 (V3552) | 컴파일 에러로 확인, 루프 밖으로 이동 |
 | ⑪ | `no_rollback` 함수는 `if` 실패 컨텍스트에서 호출 불가 (V3512) | 옵셔널 반환을 없애서 해결 |
+| ⑫ | 이름은 `<public>`인데 클래스가 `<epic_internal>` — 참조만 되고 생성 불가 | 생성까지 프로브해서 확인 |
 
 ## 다시 한다면
 
@@ -576,3 +671,4 @@ entity_4      250.0      240.8     164.3     -76.5
 7. 시각 확인이 필요한데 메시가 막히면 라이트를 쓴다
 8. 동시성은 "실행되면 안 되는 일"을 영구적으로 눈에 띄게 심어놓고 검증한다
 9. 아카타입이 막혔다고 포기하지 말고 런타임 생성 경로를 확인한다 — 제약이 다르다
+10. 접근 가능 프로브는 타입 참조가 아니라 **생성까지** 시도해야 의미가 있다
