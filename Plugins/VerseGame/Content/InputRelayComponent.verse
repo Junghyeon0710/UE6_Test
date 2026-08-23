@@ -33,6 +33,11 @@ input_reaction_component<public> := class<final_super>(component):
     @editable
     var SettleSpeed<public>:float = 20.0
 
+    # 아래로 이 속도보다 빠르면 낙하 중으로 본다 (cm/s).
+    # 경사를 걸어 내려갈 때 오검출되지 않도록 SettleSpeed 보다 넉넉히 크게 잡는다.
+    @editable
+    var FallSpeed<public>:float = 120.0
+
     @editable
     var UpdateInterval<public>:float = 0.1
 
@@ -96,20 +101,29 @@ input_reaction_component<public> := class<final_super>(component):
                         set GroundLevel = Now.Up
                         set HasGround = true
 
-                    Airborne := if (HasGround?, Now.Up - GroundLevel > AirborneHeight) then true else false
+                    # 기준보다 위로 떠 있으면 상승(점프)
+                    Rising := if (HasGround?, Now.Up - GroundLevel > AirborneHeight) then true else false
+                    # 아래로 빠르게 움직이면 낙하. 높은 곳에서 떨어질 때는 기준 높이가
+                    # 갱신되지 않아 Rising 으로는 안 잡히므로 속도 부호로 따로 본다.
+                    Falling := if (VertSpeed < -FallSpeed) then true else false
+                    Airborne := if (Rising?) then true else Falling
 
                     Ratio := if (Speed > MaxSpeed) then 1.0 else Speed / MaxSpeed
                     set Light.Intensity = IdleIntensity + (RunIntensity - IdleIntensity) * Ratio
 
-                    if (Airborne?):
-                        # 공중이면 흰색
+                    if (Rising?):
+                        # 상승 중이면 흰색
                         set Light.ColorFilter = NamedColors.White
+                    else if (Falling?):
+                        # 낙하 중이면 자홍색
+                        set Light.ColorFilter = NamedColors.Magenta
                     else:
                         # 정지 청록 -> 전력질주 노랑
                         set Light.ColorFilter = MakeColorFromHSV(180.0 - 120.0 * Ratio, 0.9, 1.0)
 
                     # 검증용: 스케일에 두 값을 실어 보낸다.
-                    # Forward = 1 + 속도비율, Up = 공중이면 2.0
+                    # Forward = 1 + 속도비율
+                    # Up = 1.0 지면 / 2.0 상승 / 3.0 낙하
                     # 메시가 없어 화면에는 안 보이지만 GetEntityTransform 으로 읽을 수 있다.
                     if (Tc := Entity.GetComponent[transform_component]):
                         set Tc.LocalTransform = transform:
@@ -118,4 +132,4 @@ input_reaction_component<public> := class<final_super>(component):
                             Scale := vector3:
                                 Forward := 1.0 + Ratio
                                 Left := 1.0
-                                Up := if (Airborne?) then 2.0 else 1.0
+                                Up := if (Rising?) then 2.0 else if (Falling?) then 3.0 else 1.0
