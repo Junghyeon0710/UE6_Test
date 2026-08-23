@@ -774,9 +774,75 @@ unreal.BlueprintEditorLibrary.compile_blueprint(bp)
 
 이제 플레이어는 **PIE를 켜는 순간 자동으로** 씬 그래프에 들어옵니다.
 
-다만 Verse 컴포넌트(`light_pulse_component` 등)를 그 엔티티에 붙이는 것은 여전히
-런타임 작업입니다. 그것까지 영구화하려면 `UActorEntityPrefabComponent`에
-컴포넌트를 가진 프리팹을 물려야 하는데, 프리팹 저작 문제(벽 ④·⑦)로 되돌아갑니다.
+### Verse 컴포넌트까지 영구화 — 프리팹 저작이 사실은 됐다
+
+`UActorEntityPrefabComponent`에 물릴 프리팹이 필요한데, 프리팹 저작은 벽 ④에서
+막혔던 것이었습니다. 그런데 다시 해보니 **C++ 경유로는 됩니다.**
+
+프리팹의 생성 클래스 CDO는 그 자체가 `verse::entity`입니다. 거기에
+`AddComponentToEntity`를 그대로 쓰면 됩니다:
+
+```python
+cdo = unreal.get_default_object(prefab.generated_class())
+unreal.SceneGraphTestUtils.add_component_to_entity(cdo, sphere_light_component)
+unreal.SceneGraphTestUtils.add_component_to_entity(cdo, light_pulse_component)
+# -> ['transform_component', 'sphere_light_component', 'light_pulse_component']
+```
+
+저장 후에도 유지됩니다. 벽 ④에서 막혔던 건 **Verse 아카타입 선언**과
+**SubobjectDataSubsystem 경로**였지, 프리팹 자체가 불가능한 게 아니었습니다.
+
+### 벽 ⑭ — 컴포넌트 생성 순서가 결과를 바꾼다
+
+프리팹을 물리고 PIE를 켰는데 라이트가 안 붙었습니다. 엔티티 클래스가
+`Prefab_Spinner_C`가 아니라 그냥 `entity`였습니다. 원인은 코드에 있었습니다:
+
+```cpp
+// UActorEntityComponent::CreateInteropEntity
+UActorEntityPrefabComponent* PrefabComponent = OwnerActor->GetComponentByClass<UActorEntityPrefabComponent>();
+if (PrefabComponent) { Entity = PrefabComponent->CreateEntity(Outer, Name); }
+else                 { Entity = NewObject<verse::entity>(...); }   // 조용한 폴백
+```
+
+`UActorEntityComponent`가 **먼저** 생성되면 그 시점에 프리팹 컴포넌트가 아직
+없어서 폴백을 탑니다. 블루프린트 컴포넌트 순서를 확인해 보니:
+
+```
+... ActorEntityComponent, ActorEntityPrefabComponent, ...   <- 순서가 반대
+```
+
+`delete_subobject`로 `ActorEntityComponent`를 지웠다가 다시 추가해서
+프리팹 컴포넌트 뒤로 보내니 해결됐습니다. 에러도 경고도 없이 그냥 다른 결과가
+나오는 종류의 문제입니다.
+
+### 최종 결과
+
+PIE를 켜기만 하면 (스크립트 개입 없이):
+
+```
+엔티티: BP_ThirdPersonCharacter_C__3dn90ur2479l3_...   Class 'Prefab_Spinner_C'
+컴포넌트: ['transform_component', 'sphere_light_component', 'light_pulse_component',
+           'replication_component', 'tag_component', 'possessable_component']
+트랜스폼: (0.0, 0.0, 302.0)
+```
+
+![플레이어 프리팹 자동 적용](images/11-player-prefab-auto.png)
+
+**보너스로 앞서 적었던 한계 하나가 해소됐습니다.** 프리팹 경로로 만들어진 엔티티는
+`FCreateEntityParams(Level, ...)`를 쓰기 때문에 `SimulationEntity`가 아니라
+**`LevelEntity` 트리 아래**에 생깁니다:
+
+```
+LevelEntity
+├── SpinnerEntity / ConcurrencyDemo / OrbitSystem / entity_0..4
+└── BP_ThirdPersonCharacter_C__...        (0.0, 0.0, 302.0)   <- 플레이어
+```
+
+즉 이제 **Verse 컴포넌트가 트리 순회로 플레이어를 찾을 수 있습니다.**
+거리 기반 상호작용 같은 걸 만들 수 있는 상태가 됐습니다.
+
+> 참고: 프리팹 이름이 `Prefab_Spinner`인데 지금은 플레이어용으로 쓰이고 있습니다.
+> 초기 실험 때 만든 이름이 그대로 남은 것으로, 이름만 부적절합니다.
 
 ---
 
@@ -797,6 +863,7 @@ unreal.BlueprintEditorLibrary.compile_blueprint(bp)
 | ⑪ | `no_rollback` 함수는 `if` 실패 컨텍스트에서 호출 불가 (V3512) | 옵셔널 반환을 없애서 해결 |
 | ⑫ | 이름은 `<public>`인데 클래스가 `<epic_internal>` — 참조만 되고 생성 불가 | 생성까지 프로브해서 확인 |
 | ⑬ | 인터롭 서브시스템이 Abstract 인데 구체 클래스가 엔진에 없음 | 파생 클래스 스캔, 직접 구현 |
+| ⑭ | BP 컴포넌트 생성 순서에 따라 조용히 다른 결과 | 런타임 컴포넌트 순서 확인 후 재정렬 |
 
 ## 다시 한다면
 
@@ -811,3 +878,4 @@ unreal.BlueprintEditorLibrary.compile_blueprint(bp)
 9. 아카타입이 막혔다고 포기하지 말고 런타임 생성 경로를 확인한다 — 제약이 다르다
 10. 접근 가능 프로브는 타입 참조가 아니라 **생성까지** 시도해야 의미가 있다
 11. 파라미터 이름을 믿지 말고 구현을 읽는다 (`bAllowCreateEntity`는 쓰이지도 않는다)
+12. "막혔다"는 결론은 경로별로 다시 검증한다 — 프리팹 저작은 Verse에서만 막혔고 C++로는 됐다
