@@ -39,3 +39,7 @@ DerivedDataCache/
 # ---- 소스 아트 ----
 SourceArt/**/*.png
 SourceArt/**/*.tga
+
+# ---- UBT가 생성하는 IDE 보조 파일 (절대 경로 포함) ----
+.vscode/
+.ignore

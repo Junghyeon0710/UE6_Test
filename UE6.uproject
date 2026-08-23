@@ -38,6 +38,14 @@
 		{
 			"Name": "EditorToolset",
 			"Enabled": true
+		},
+		{
+			"Name": "EntityFramework",
+			"Enabled": true
+		},
+		{
+			"Name": "VerseGame",
+			"Enabled": true
 		}
 	]
 }

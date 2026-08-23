@@ -1,0 +1,33 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "0.1",
+	"FriendlyName": "VerseGame",
+	"Description": "UE6 프로젝트의 Verse / Scene Graph 코드 루트",
+	"Category": "Verse",
+	"CreatedBy": "",
+	"CanContainContent": true,
+	"CanContainVerse": true,
+	"VersePath": "/ue6.local/VerseGame",
+	"VerseScope": "PublicUser",
+	"EnabledByDefault": true,
+	"IsBetaVersion": true,
+	"Plugins": [
+		{
+			"Name": "EntityFramework",
+			"Enabled": true
+		},
+		{
+			"Name": "VersePrint",
+			"Enabled": true
+		},
+		{
+			"Name": "VerseSpatialMath",
+			"Enabled": true
+		},
+		{
+			"Name": "VerseSimulation",
+			"Enabled": true
+		}
+	]
+}
