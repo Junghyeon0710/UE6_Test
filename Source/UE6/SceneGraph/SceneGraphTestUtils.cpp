@@ -169,3 +169,21 @@ UObject* USceneGraphTestUtils::AddStaticMeshToEntity(UObject* EntityObject, USta
 	return nullptr;
 #endif
 }
+
+bool USceneGraphTestUtils::DestroyEntity(UObject* EntityObject)
+{
+	verse::entity* Entity = AsEntity(EntityObject);
+	if (!Entity)
+	{
+		return false;
+	}
+
+	ALevelEntity* LevelEntityActor = ALevelEntity::GetLevelEntityActor(Entity);
+	if (!LevelEntityActor)
+	{
+		return false;
+	}
+
+	LevelEntityActor->DestroyEntity(Entity);
+	return true;
+}

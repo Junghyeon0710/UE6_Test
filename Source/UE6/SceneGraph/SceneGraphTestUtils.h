@@ -37,6 +37,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category="SceneGraph|Test")
 	static bool GetEntityTransform(UObject* Entity, FTransform& OutTransform);
 
+	/**
+	 *  엔티티를 레벨에서 제거한다.
+	 *  ALevelEntity::DestroyEntity 를 거쳐야 프록시 액터와 참조 정리까지 처리된다.
+	 */
+	UFUNCTION(BlueprintCallable, Category="SceneGraph|Test")
+	static bool DestroyEntity(UObject* Entity);
+
 	/** 월드의 레벨 루트 엔티티 아래에 있는 모든 엔티티를 반환한다. */
 	UFUNCTION(BlueprintCallable, Category="SceneGraph|Test")
 	static TArray<UObject*> GetAllEntities(UObject* WorldContextObject);

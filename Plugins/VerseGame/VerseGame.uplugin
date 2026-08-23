@@ -29,5 +29,7 @@
 			"Name": "VerseSimulation",
 			"Enabled": true
 		}
-	]
+	],
+	"EnableVerseAssetReflection": true,
+	"EnableSceneGraph": true
 }

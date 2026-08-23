@@ -161,6 +161,7 @@ Python 바인딩이 자동으로 생기므로, 이후 모든 작업이 스크립
 SpawnEntityWithComponents(World, {ComponentClasses}, Transform, Name)
 AddComponentToEntity(Entity, ComponentClass)
 AddStaticMeshToEntity(Entity, Mesh)      // 에디터 전용
+DestroyEntity(Entity)
 GetEntityTransform(Entity)
 GetAllEntities(World) / GetEntityComponents(Entity)
 ```
@@ -181,13 +182,61 @@ UE::SceneGraphAPI::GetOrCreateComponentByType(Entity, MeshComponentClass);
 ```
 
 **메시 에셋마다 전용 컴포넌트 클래스가 따로 생성되어 있고**, 그 클래스를 붙이는 구조입니다.
-그런데 이 클래스는 uplugin에 `bEnableVerseAssetReflection`이 켜진 플러그인의 에셋에
-대해서만 생성됩니다. 확인해 보니 이 프로젝트에는 그런 클래스가 0개라
-`/Engine/BasicShapes/Cube`로는 `nullptr`가 돌아옵니다.
+`mesh_component`를 상속한 Verse 클래스가 에셋 하나당 하나씩 있고, 그 클래스의 CDO가
+에셋 참조를 들고 있습니다.
 
-`AddStaticMeshToEntity`는 구현해 뒀지만, 쓰려면 먼저 메시를 `VerseGame` 플러그인
-콘텐츠로 옮기고 에셋 리플렉션을 켜야 합니다. 그래서 이번 검증은 화면이 아니라
-**트랜스폼 수치**로 했습니다.
+이걸 만들어 보려고 다음을 시도했습니다:
+
+1. 큐브를 `/VerseGame/Cube`로 복제 (플러그인 콘텐츠 안으로)
+2. uplugin에 에셋 리플렉션 활성화
+3. 에디터 재시작 + `Verse.RebuildAssetDigest` 콘솔 명령
+
+### 벽 ⑧ — uplugin의 JSON 키 이름은 C++ 멤버 이름과 다르다
+
+처음에 `"bEnableVerseAssetReflection": true`라고 썼는데 아무 일도 일어나지 않았습니다.
+`PluginDescriptor.h`의 멤버 이름이 `bEnableVerseAssetReflection`이라 그대로 쓴 건데,
+**JSON에서 읽는 키는 `b`가 빠진 이름**입니다:
+
+```cpp
+// Source/Runtime/Projects/Private/PluginDescriptor.cpp:354
+TryGetBoolField(Object, TEXT("EnableVerseAssetReflection"), Result.bEnableVerseAssetReflection);
+TryGetBoolField(Object, TEXT("EnableSceneGraph"),           Result.bEnableSceneGraph);
+```
+
+오타여도 **경고 한 줄 없이 무시**됩니다. 키를 고치니 `VerseGame/Assets` 패키지가
+생성되고 `VerseGame-Assets.digest.verse`가 나오기 시작했습니다.
+
+### 그래도 메시는 미해결
+
+키를 고친 뒤에도 결과는 이랬습니다:
+
+```
+LogVerseUObjectGenerator: Generating UE types for Verse package VerseGame/Assets.
+FCompiledPackageRegistry::SetGeneratedTypes(VerseGame/Assets, 0 types, 0 redirects)
+```
+
+디지스트 파일은 헤더만 있는 280바이트짜리 빈 파일이었습니다. 확인차 프로젝트와
+엔진 콘텐츠 전체에서 Verse 클래스를 세어 보니:
+
+```
+/EntityFramework  VerseClass 0개
+/Game             VerseClass 0개
+/VerseGame        VerseClass 5개  (전부 우리가 작성한 컴포넌트/태스크)
+```
+
+**`mesh_component`를 상속한 클래스가 이 환경에 하나도 없습니다.** 즉 에디터의
+"기본 도형을 엔티티로 배치" 기능도 이 프로젝트에서는 똑같이 실패할 겁니다.
+메시 리플렉션 코드(`VerseMeshReflection.cpp`)의 게이팅 플래그
+`bEnableVerseParameterizedMeshReflection` / `bInspectMeshesForVersePartReflection`은
+둘 다 기본값이 `true`라 원인이 아니고, 그 아래에서 메시의
+`MeshPartAssetUserData`를 요구하는 부분이 있습니다. 일반적인 임포트/복제 메시에는
+그 유저 데이터가 없습니다.
+
+여기서 멈췄습니다. 스톡 콘텐츠만으로는 메시 컴포넌트 클래스를 만들 수 없고,
+Fortnite 쪽 콘텐츠 파이프라인을 거친 에셋이 필요해 보입니다.
+`AddStaticMeshToEntity`는 코드로는 올바르니, 나중에 조건이 갖춰지면 그대로 동작합니다.
+
+그래서 이번 검증은 화면이 아니라 **트랜스폼 수치**로 했습니다.
 
 ---
 
@@ -280,6 +329,7 @@ TCP 연결은 받아들이는데 응답이 없어서 한참 헤맸습니다. UE 
 | ⑤ | 같은 이름의 함수 두 개 (멤버 vs SceneGraphAPI) | 에디터 자체 코드 grep |
 | ⑥ | 백그라운드 에디터는 MCP 응답 없음 | 창 포그라운드로 올려보고 확인 |
 | ⑦ | 메시는 에셋별 생성 컴포넌트 클래스로 붙임 | 에디터 배치 팩토리 코드 추적 |
+| ⑧ | uplugin JSON 키에는 `b` 접두사가 없음 (조용히 무시됨) | `PluginDescriptor.cpp`의 `TryGetBoolField` 확인 |
 
 ## 다시 한다면
 
@@ -287,3 +337,4 @@ TCP 연결은 받아들이는데 응답이 없어서 한참 헤맸습니다. UE 
 2. 쓸 Verse API가 어느 플러그인 소속인지 `.vproject`로 먼저 확인한다
 3. 씬 그래프를 코드로 다룰 거면 처음부터 `UE::SceneGraphAPI` 네임스페이스만 쓴다
 4. 에디터 자동화 전에 창을 포그라운드로 올린다
+5. uplugin에 플래그를 넣었는데 아무 반응이 없으면 오타를 의심한다 — 검증도 경고도 없다
